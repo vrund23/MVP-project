@@ -1,3 +1,4 @@
+// models/Product.js
 const mongoose = require('mongoose');
 
 const variantSchema = new mongoose.Schema({
@@ -22,8 +23,7 @@ const variantSchema = new mongoose.Schema({
     trim: true
   },
   servings: {
-    type: String,
-    default: null
+    type: String
   },
   price: {
     type: Number,
@@ -51,7 +51,6 @@ const productSchema = new mongoose.Schema(
       trim: true,
       index: true
     },
-    // Primary Storefront Pillar
     category: {
       type: String,
       required: [true, 'Category is required'],
@@ -61,17 +60,14 @@ const productSchema = new mongoose.Schema(
       },
       index: true
     },
-    // On-Page Sub-Filter Pills
     subcategory: {
       type: String,
       required: [true, 'Subcategory is required'],
       index: true,
       trim: true
     },
-    // Visual Luxury & Social Proof Badge
     badge: {
       type: String,
-      default: null,
       trim: true
     },
     description: {
@@ -79,30 +75,39 @@ const productSchema = new mongoose.Schema(
       required: [true, 'Description is required'],
       trim: true
     },
+
+    // --- Specific to CHOCOLATES ---
     cocoaPercentage: {
       type: Number,
       min: 0,
-      max: 100,
-      default: null
+      max: 100
+      // No default: will not appear on Cakes or Hampers
     },
+
+    // --- Specific to CAKES ---
     cakeLevels: {
       type: Number,
       min: 1,
-      max: 5,
-      default: 1
+      max: 5
+      // No default: will not appear on Chocolates or Hampers
     },
+
+    // --- Specific to HAMPERS & GIFT BOXES ---
+    packagingType: {
+      type: String,
+      trim: true
+      // No default
+    },
+    itemsIncluded: {
+      type: [String]
+      // No default: will not appear on Cakes or Chocolates
+    },
+
+    // --- Common Fields ---
     dietaryTags: {
       type: [String],
       enum: ['eggless', 'gluten-free', 'vegan', 'nut-free'],
       default: ['eggless']
-    },
-    packagingType: {
-      type: String,
-      default: null
-    },
-    itemsIncluded: {
-      type: [String],
-      default: []
     },
     storageInstructions: {
       type: String,
@@ -135,7 +140,6 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-// High-speed compound index for category + subcategory queries
 productSchema.index({ category: 1, subcategory: 1, isAvailable: 1 });
 
 module.exports = mongoose.model('Product', productSchema);

@@ -6,10 +6,10 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-  "start": "node server.js",
-  "dev": "nodemon server.js",
-  "data:seed": "node seeder.js"
-},
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "data:seed": "node seeder.js"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
