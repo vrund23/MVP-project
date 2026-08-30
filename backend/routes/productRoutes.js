@@ -8,15 +8,21 @@ const {
   updateProduct,
   deleteProduct
 } = require('../controllers/productController');
-const { protect, requireOwner } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
-// Public Storefront Endpoints (Anyone can view products)
+// ==========================================
+// PUBLIC / CUSTOMER ACCESS (Read-Only)
+// ==========================================
+// Customers & visitors can browse cakes, chocolates, and hampers
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 
-// Protected Admin Routes (Requires valid JWT & role === 'owner')
-router.post('/', protect, requireOwner, createProduct);
-router.put('/:id', protect, requireOwner, updateProduct);
-router.delete('/:id', protect, requireOwner, deleteProduct);
+// ==========================================
+// OWNER ONLY ACCESS (Full CRUD)
+// ==========================================
+// Only users with role === 'owner' can create, update, or soft-delete items
+router.post('/', protect, authorize('owner'), createProduct);
+router.put('/:id', protect, authorize('owner'), updateProduct);
+router.delete('/:id', protect, authorize('owner'), deleteProduct);
 
 module.exports = router;

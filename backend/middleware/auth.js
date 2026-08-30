@@ -1,5 +1,8 @@
+// middleware/auth.js
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
+// 1. Authentication Check: Verifies the JWT token
 exports.protect = async (req, res, next) => {
   try {
     let token;
@@ -18,23 +21,29 @@ exports.protect = async (req, res, next) => {
       });
     }
 
+    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Attach user payload (id, role) to request object
     req.user = decoded;
     next();
   } catch (error) {
     return res.status(401).json({
       success: false,
-      message: 'Invalid or expired authentication token.'
+      message: 'Invalid, expired, or manipulated token.'
     });
   }
 };
 
-exports.requireOwner = (req, res, next) => {
-  if (req.user && req.user.role === 'owner') {
-    return next();
-  }
-  return res.status(403).json({
-    success: false,
-    message: 'Forbidden: Access restricted to bakery owner only.'
-  });
+// 2. Authorization Check (RBAC): Restricts access by user role
+exports.authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `Forbidden: User role '${req.user ? req.user.role : 'unauthenticated'}' is not authorized to perform this action.`
+      });
+    }
+    next();
+  };
 };
