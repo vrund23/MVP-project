@@ -29,9 +29,9 @@ const sendTokenResponse = (user, statusCode, res, message) => {
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, phone, role } = req.body;
+    const { name, email, password, phone, role, ownerPasscode } = req.body;
 
-    // Check if user already exists
+    // 1. Check if user with this email already exists
     const userExists = await User.findOne({ email: email.toLowerCase() });
     if (userExists) {
       return res.status(400).json({
@@ -40,13 +40,38 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Create user document
+    // 2. Strict One-Owner Enforcement
+    let assignedRole = 'customer';
+
+    if (role === 'owner') {
+      // Check how many owners already exist in the database
+      const existingOwnerCount = await User.countDocuments({ role: 'owner' });
+
+      if (existingOwnerCount >= 1) {
+        return res.status(403).json({
+          success: false,
+          message: 'Registration rejected: An owner account is already registered.'
+        });
+      }
+
+      // Verify the secret registration passcode from .env
+      if (ownerPasscode !== process.env.OWNER_REGISTER_SECRET) {
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid owner registration passcode.'
+        });
+      }
+
+      assignedRole = 'owner';
+    }
+
+    // 3. Create User with enforced role
     const user = await User.create({
       name,
       email,
       password,
       phone,
-      role: role || 'customer'
+      role: assignedRole
     });
 
     sendTokenResponse(user, 201, res, 'Account registered successfully.');
