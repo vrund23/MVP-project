@@ -76,6 +76,7 @@ export default function AuthPage({ onLoginSuccess }) {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                autoComplete="off"
                 placeholder="e.g. Sarah Jenkins"
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
               />
@@ -89,6 +90,7 @@ export default function AuthPage({ onLoginSuccess }) {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="off"
               placeholder="user@example.com"
               style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
             />
@@ -101,6 +103,7 @@ export default function AuthPage({ onLoginSuccess }) {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
               placeholder="••••••••"
               style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
             />
