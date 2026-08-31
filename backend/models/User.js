@@ -44,13 +44,12 @@ const userSchema = new mongoose.Schema(
 );
 
 // 1. Password Hashing Hook: Automatically hashes password before saving to MongoDB
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
   if (!this.isModified('password')) {
-    return next();
+    return;
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  next();
 });
 
 // 2. Custom Method: Compares entered plain-text password with the stored hash during login
