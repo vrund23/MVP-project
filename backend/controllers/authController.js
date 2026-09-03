@@ -2,36 +2,33 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// Helper to sign JWT payload
-const sendTokenResponse = (user, statusCode, res, message) => {
-  const token = jwt.sign(
-    { id: user._id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '30d' }
+// Centralized Token Generator with Safety Fallback
+const generateToken = (userId, userRole) => {
+  // Uses environment variable, or falls back to a backup string to prevent runtime crash
+  const secretKey = process.env.JWT_SECRET || 'fallback_secret_m_chocolates_and_cakes_2026';
+  
+  return jwt.sign(
+    { id: userId, role: userRole },
+    secretKey,
+    { expiresIn: '30d' }
   );
-
-  res.status(statusCode).json({
-    success: true,
-    message,
-    token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      role: user.role
-    }
-  });
 };
 
-// @desc    Register new user (Customer or Owner)
+// @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
     const { name, email, password, phone, role, ownerPasscode } = req.body;
 
-    // 1. Check if user with this email already exists
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, email, and password are required.'
+      });
+    }
+
+    // Check if user already exists
     const userExists = await User.findOne({ email: email.toLowerCase() });
     if (userExists) {
       return res.status(400).json({
@@ -40,13 +37,10 @@ exports.register = async (req, res) => {
       });
     }
 
-    // 2. Strict One-Owner Enforcement
     let assignedRole = 'customer';
 
     if (role === 'owner') {
-      // Check how many owners already exist in the database
       const existingOwnerCount = await User.countDocuments({ role: 'owner' });
-
       if (existingOwnerCount >= 1) {
         return res.status(403).json({
           success: false,
@@ -54,8 +48,7 @@ exports.register = async (req, res) => {
         });
       }
 
-      // Verify the secret registration passcode from .env
-      if (ownerPasscode !== process.env.OWNER_REGISTER_SECRET) {
+      if (ownerPasscode !== (process.env.OWNER_REGISTER_SECRET || 'MonaBakerySecret2026!')) {
         return res.status(403).json({
           success: false,
           message: 'Invalid owner registration passcode.'
@@ -65,17 +58,32 @@ exports.register = async (req, res) => {
       assignedRole = 'owner';
     }
 
-    // 3. Create User with enforced role
+    // 1. Create User in MongoDB
     const user = await User.create({
       name,
       email,
       password,
-      phone,
+      phone: phone || '',
       role: assignedRole
     });
 
-    sendTokenResponse(user, 201, res, 'Account registered successfully.');
+    // 2. Sign Token
+    const token = generateToken(user._id, user.role);
+
+    // 3. Send Success Response
+    res.status(201).json({
+      success: true,
+      message: 'Account registered successfully.',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
   } catch (error) {
+    console.error('Registration Error:', error);
     res.status(400).json({
       success: false,
       message: 'Registration failed.',
@@ -98,44 +106,61 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Explicitly select password field since select: false is set on schema
+    // Find user and explicitly select password
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
 
-    if (!user || !(await user.matchPassword(password))) {
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password credentials.'
       });
     }
 
-    sendTokenResponse(user, 200, res, 'Login successful.');
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password credentials.'
+      });
+    }
+
+    // Sign Token
+    const token = generateToken(user._id, user.role);
+
+    res.status(200).json({
+      success: true,
+      message: 'Login successful.',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
   } catch (error) {
+    console.error('Login Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Login service error.',
+      message: 'Login server error.',
       error: error.message
     });
   }
 };
 
-// @desc    Get current authenticated user profile
+// @desc    Get authenticated user profile
 // @route   GET /api/auth/me
-// @access  Private (Requires valid JWT)
+// @access  Private
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User profile not found.'
+        message: 'User not found.'
       });
     }
-
-    res.status(200).json({
-      success: true,
-      user
-    });
+    res.status(200).json({ success: true, user });
   } catch (error) {
     res.status(500).json({
       success: false,
