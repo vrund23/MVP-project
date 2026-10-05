@@ -8,6 +8,8 @@ const cors = require('cors');
 const productRoutes = require('./routes/productRoutes');
 const authRoutes = require('./routes/authRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 const app = express();
 
@@ -17,6 +19,18 @@ app.use(express.json());
 app.use('/api/products', productRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/upload', uploadRoutes);
+
+app.use((err, req, res, next) => {
+  if (err.name === 'MulterError') {
+    return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+  }
+  if (err) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+  next();
+});
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date() });
