@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const razorpay = require('../config/razorpay');
 const Order = require('../models/Order');
+const { dispatchOrderConfirmationAlerts } = require('../services/notificationService');
 
 // @desc    Initiate Razorpay checkout order
 // @route   POST /api/payments/create-order
@@ -126,6 +127,7 @@ exports.verifyPayment = async (req, res) => {
     order.orderStatus = 'confirmed'; // Automatically advance status to confirmed upon successful payment
 
     const updatedOrder = await order.save();
+    dispatchOrderConfirmationAlerts(req.user.email, updatedOrder);
 
     res.status(200).json({
       success: true,

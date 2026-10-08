@@ -1,6 +1,14 @@
+// At the top of controllers/orderController.js
+const {
+  sendStatusUpdateEmail,
+  sendCancellationEmail,
+} = require("../services/emailService");
 // controllers/orderController.js
-const Order = require('../models/Order');
-const Product = require('../models/Product');
+const Order = require("../models/Order");
+const Product = require("../models/Product");
+const {
+  dispatchOrderConfirmationAlerts,
+} = require("../services/notificationService");
 
 // @desc    Checkout: Validate cart, check lead time, deduct stock, create order
 // @route   POST /api/orders
@@ -12,14 +20,14 @@ exports.createOrder = async (req, res) => {
     if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Your cart is empty. Please add items to checkout.'
+        message: "Your cart is empty. Please add items to checkout.",
       });
     }
 
     if (!fulfillment || !fulfillment.deliveryDate || !fulfillment.timeSlot) {
       return res.status(400).json({
         success: false,
-        message: 'Fulfillment date and time slot are required.'
+        message: "Fulfillment date and time slot are required.",
       });
     }
 
@@ -27,7 +35,7 @@ exports.createOrder = async (req, res) => {
     if (isNaN(requestedDate.getTime())) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid delivery date provided.'
+        message: "Invalid delivery date provided.",
       });
     }
 
@@ -42,31 +50,34 @@ exports.createOrder = async (req, res) => {
       if (!liveProduct) {
         return res.status(404).json({
           success: false,
-          message: `Product not found: ${item.productId}`
+          message: `Product not found: ${item.productId}`,
         });
       }
 
       // Check lead time
-      if (liveProduct.leadTimeHours && liveProduct.leadTimeHours > maxLeadTimeHours) {
+      if (
+        liveProduct.leadTimeHours &&
+        liveProduct.leadTimeHours > maxLeadTimeHours
+      ) {
         maxLeadTimeHours = liveProduct.leadTimeHours;
       }
 
       // Locate specific variant
       const variant = liveProduct.variants.find(
-        (v) => v.variantId === item.variantId
+        (v) => v.variantId === item.variantId,
       );
 
       if (!variant) {
         return res.status(404).json({
           success: false,
-          message: `Variant '${item.variantId}' does not exist for product '${liveProduct.title}'.`
+          message: `Variant '${item.variantId}' does not exist for product '${liveProduct.title}'.`,
         });
       }
 
       if (variant.stock < item.quantity) {
         return res.status(400).json({
           success: false,
-          message: `Insufficient inventory for ${liveProduct.title} (${variant.label}). In stock: ${variant.stock}`
+          message: `Insufficient inventory for ${liveProduct.title} (${variant.label}). In stock: ${variant.stock}`,
         });
       }
 
@@ -78,25 +89,27 @@ exports.createOrder = async (req, res) => {
         title: liveProduct.title,
         variantId: variant.variantId,
         variantLabel: variant.label,
-        weight: variant.weight || '',
+        weight: variant.weight || "",
         price: variant.price,
         quantity: item.quantity,
-        imageUrl: variant.imageUrl || ''
+        imageUrl: variant.imageUrl || "",
       });
 
       stockDeductionQueue.push({
         productId: liveProduct._id,
         variantId: variant.variantId,
-        quantity: item.quantity
+        quantity: item.quantity,
       });
     }
 
     // 2. Lead Time Enforcement
-    const earliestPossibleDate = new Date(Date.now() + maxLeadTimeHours * 60 * 60 * 1000);
+    const earliestPossibleDate = new Date(
+      Date.now() + maxLeadTimeHours * 60 * 60 * 1000,
+    );
     if (requestedDate < earliestPossibleDate) {
       return res.status(400).json({
         success: false,
-        message: `Selected date does not meet prep lead-time of ${maxLeadTimeHours} hour(s). Earliest available is: ${earliestPossibleDate.toLocaleString()}`
+        message: `Selected date does not meet prep lead-time of ${maxLeadTimeHours} hour(s). Earliest available is: ${earliestPossibleDate.toLocaleString()}`,
       });
     }
 
@@ -105,24 +118,25 @@ exports.createOrder = async (req, res) => {
       const updateResult = await Product.updateOne(
         {
           _id: deduction.productId,
-          'variants.variantId': deduction.variantId,
-          'variants.stock': { $gte: deduction.quantity }
+          "variants.variantId": deduction.variantId,
+          "variants.stock": { $gte: deduction.quantity },
         },
         {
-          $inc: { 'variants.$.stock': -deduction.quantity }
-        }
+          $inc: { "variants.$.stock": -deduction.quantity },
+        },
       );
 
       if (updateResult.modifiedCount === 0) {
         return res.status(400).json({
           success: false,
-          message: 'Inventory changed during checkout. Please review cart and retry.'
+          message:
+            "Inventory changed during checkout. Please review cart and retry.",
         });
       }
     }
 
     // 4. Calculate Final Pricing
-    const deliveryFee = fulfillment.method === 'pickup' ? 0 : 50;
+    const deliveryFee = fulfillment.method === "pickup" ? 0 : 50;
     const finalAmount = calculatedItemsTotal + deliveryFee;
 
     // 5. Create Order Document
@@ -134,26 +148,30 @@ exports.createOrder = async (req, res) => {
       pricing: {
         itemsTotal: calculatedItemsTotal,
         deliveryFee,
-        totalAmount: finalAmount
+        totalAmount: finalAmount,
       },
       payment: {
-        method: paymentMethod || 'cod',
-        status: 'pending'
+        method: paymentMethod || "cod",
+        status: "pending",
       },
-      orderStatus: 'placed'
+      orderStatus: "placed",
     });
+
+    if (order.payment.method === "cod") {
+      dispatchOrderConfirmationAlerts(req.user.email, order);
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Order placed successfully.',
-      data: order
+      message: "Order placed successfully.",
+      data: order,
     });
   } catch (error) {
-    console.error('Order Creation Failure:', error);
+    console.error("Order Creation Failure:", error);
     res.status(500).json({
       success: false,
-      message: 'Checkout processing failed.',
-      error: error.message
+      message: "Checkout processing failed.",
+      error: error.message,
     });
   }
 };
@@ -163,18 +181,20 @@ exports.createOrder = async (req, res) => {
 // @access  Private (Customer)
 exports.getMyOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ customer: req.user.id }).sort({ createdAt: -1 });
+    const orders = await Order.find({ customer: req.user.id }).sort({
+      createdAt: -1,
+    });
 
     res.status(200).json({
       success: true,
       count: orders.length,
-      data: orders
+      data: orders,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch order history.',
-      error: error.message
+      message: "Failed to fetch order history.",
+      error: error.message,
     });
   }
 };
@@ -184,32 +204,38 @@ exports.getMyOrders = async (req, res) => {
 // @access  Private (Owner or Buyer)
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).populate('customer', 'name email phone');
+    const order = await Order.findById(req.params.id).populate(
+      "customer",
+      "name email phone",
+    );
 
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: 'Order not found.'
+        message: "Order not found.",
       });
     }
 
     // RBAC: Customer can only access their own order
-    if (req.user.role !== 'owner' && order.customer._id.toString() !== req.user.id) {
+    if (
+      req.user.role !== "owner" &&
+      order.customer._id.toString() !== req.user.id
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied: You can only view your own orders.'
+        message: "Access denied: You can only view your own orders.",
       });
     }
 
     res.status(200).json({
       success: true,
-      data: order
+      data: order,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch order details.',
-      error: error.message
+      message: "Failed to fetch order details.",
+      error: error.message,
     });
   }
 };
@@ -227,23 +253,23 @@ exports.getAllOrders = async (req, res) => {
       const queryDate = new Date(date);
       const nextDay = new Date(queryDate);
       nextDay.setDate(nextDay.getDate() + 1);
-      filter['fulfillment.deliveryDate'] = { $gte: queryDate,$lt: nextDay };
+      filter["fulfillment.deliveryDate"] = { $gte: queryDate, $lt: nextDay };
     }
 
     const orders = await Order.find(filter)
-      .populate('customer', 'name email phone')
+      .populate("customer", "name email phone")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
       count: orders.length,
-      data: orders
+      data: orders,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to retrieve bakery orders.',
-      error: error.message
+      message: "Failed to retrieve bakery orders.",
+      error: error.message,
     });
   }
 };
@@ -255,19 +281,19 @@ exports.updateOrderStatus = async (req, res) => {
   try {
     const { orderStatus, paymentStatus } = req.body;
     const allowedStatuses = [
-      'placed',
-      'confirmed',
-      'in_kitchen',
-      'ready_for_pickup',
-      'out_for_delivery',
-      'delivered',
-      'cancelled'
+      "placed",
+      "confirmed",
+      "in_kitchen",
+      "ready_for_pickup",
+      "out_for_delivery",
+      "delivered",
+      "cancelled",
     ];
 
     if (orderStatus && !allowedStatuses.includes(orderStatus)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status: '${orderStatus}'. Allowed: ${allowedStatuses.join(', ')}`
+        message: `Invalid status: '${orderStatus}'. Allowed: ${allowedStatuses.join(", ")}`,
       });
     }
 
@@ -275,7 +301,7 @@ exports.updateOrderStatus = async (req, res) => {
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: 'Order not found.'
+        message: "Order not found.",
       });
     }
 
@@ -284,16 +310,26 @@ exports.updateOrderStatus = async (req, res) => {
 
     const updated = await order.save();
 
+    const populatedOrder = await Order.findById(updated._id).populate(
+      "customer",
+      "email",
+    );
+    if (populatedOrder && populatedOrder.customer?.email) {
+      setImmediate(() =>
+        sendStatusUpdateEmail(populatedOrder.customer.email, populatedOrder),
+      );
+    }
+
     res.status(200).json({
       success: true,
       message: `Order transitioned to '${updated.orderStatus}'.`,
-      data: updated
+      data: updated,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to update order status.',
-      error: error.message
+      message: "Failed to update order status.",
+      error: error.message,
     });
   }
 };
@@ -309,55 +345,72 @@ exports.cancelOrder = async (req, res) => {
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: 'Order not found.'
+        message: "Order not found.",
       });
     }
 
     // Restrict authorization
-    if (req.user.role !== 'owner' && order.customer.toString() !== req.user.id) {
+    if (
+      req.user.role !== "owner" &&
+      order.customer.toString() !== req.user.id
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized to cancel this order.'
+        message: "Unauthorized to cancel this order.",
       });
     }
 
     // Cancellation guard: Can't cancel if already being baked or out for delivery
-    if (['in_kitchen', 'out_for_delivery', 'delivered'].includes(order.orderStatus)) {
+    if (
+      ["in_kitchen", "out_for_delivery", "delivered"].includes(
+        order.orderStatus,
+      )
+    ) {
       return res.status(400).json({
         success: false,
-        message: `Cannot cancel an order currently '${order.orderStatus}'. Please contact bakery support directly.`
+        message: `Cannot cancel an order currently '${order.orderStatus}'. Please contact bakery support directly.`,
       });
     }
 
-    if (order.orderStatus === 'cancelled') {
+    if (order.orderStatus === "cancelled") {
       return res.status(400).json({
         success: false,
-        message: 'Order is already cancelled.'
+        message: "Order is already cancelled.",
       });
     }
 
     // Restock variants atomically ($inc: +quantity)
     for (const item of order.items) {
       await Product.updateOne(
-        { _id: item.product, 'variants.variantId': item.variantId },
-        { $inc: { 'variants.$.stock': item.quantity } }
+        { _id: item.product, "variants.variantId": item.variantId },
+        { $inc: { "variants.$.stock": item.quantity } },
       );
     }
 
-    order.orderStatus = 'cancelled';
-    order.cancellationReason = reason || 'Cancelled by user/owner';
+    order.orderStatus = "cancelled";
+    order.cancellationReason = reason || "Cancelled by user/owner";
     const updated = await order.save();
+
+    const populatedOrder = await Order.findById(updated._id).populate(
+      "customer",
+      "email",
+    );
+    if (populatedOrder && populatedOrder.customer?.email) {
+      setImmediate(() =>
+        sendCancellationEmail(populatedOrder.customer.email, populatedOrder),
+      );
+    }
 
     res.status(200).json({
       success: true,
-      message: 'Order cancelled successfully and inventory restocked.',
-      data: updated
+      message: "Order cancelled successfully and inventory restocked.",
+      data: updated,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to cancel order.',
-      error: error.message
+      message: "Failed to cancel order.",
+      error: error.message,
     });
   }
 };
