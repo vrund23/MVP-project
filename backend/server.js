@@ -59,6 +59,9 @@ app.use(
   }),
 );
 app.use("/api", apiLimiter);
+app.use("/api/auth", authLimiter);
+app.use("/api/orders", checkoutLimiter);
+app.use("/api/payments", checkoutLimiter);
 
 app.use("/api/products", productRoutes);
 app.use("/api/auth", authRoutes);
