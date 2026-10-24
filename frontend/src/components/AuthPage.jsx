@@ -1,28 +1,78 @@
+// frontend/src/components/AuthPage.jsx
 import React, { useState } from 'react';
 import { api } from '../api';
 
+// ─── Brand Tokens ────────────────────────────────────────────────────────────
+const C = {
+  bg:        '#FAF7F2',
+  dark:      '#2B1E16',
+  medium:    '#3B2820',
+  cta:       '#C86A28',
+  gold:      '#D4AF37',
+  border:    '#E8DDD5',
+  error:     '#C0392B',
+  errorBg:   '#FEF0EE',
+  muted:     '#8A7060',
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '11px 14px',
+  borderRadius: '8px',
+  border: `1.5px solid ${C.border}`,
+  background: '#FFFFFF',
+  fontSize: '14px',
+  color: C.dark,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '11px',
+  fontWeight: '700',
+  color: C.medium,
+  marginBottom: '5px',
+  textTransform: 'uppercase',
+  letterSpacing: '0.6px',
+};
+
 export default function AuthPage({ onLoginSuccess }) {
-  const [isRegister, setIsRegister] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('customer');
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [form, setForm] = useState({
+    name: '', email: '', password: '',
+    phone: '', role: 'customer', ownerPasscode: '',
+  });
+  const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const switchMode = (m) => { setMode(m); setError(''); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
-      if (isRegister) {
-        const res = await api.register({ name, email, password, role });
-        onLoginSuccess(res.user);
+      let res;
+      if (mode === 'register') {
+        res = await api.register({
+          name:  form.name,
+          email: form.email,
+          password: form.password,
+          phone: form.phone || undefined,
+          role:  form.role,
+          // ownerPasscode is only sent (and validated) when role === 'owner'
+          ...(form.role === 'owner' ? { ownerPasscode: form.ownerPasscode } : {}),
+        });
       } else {
-        const res = await api.login({ email, password });
-        onLoginSuccess(res.user);
+        res = await api.login({ email: form.email, password: form.password });
       }
+
+      // ── Persist JWT token and user profile ──────────────────────────────
+      localStorage.setItem('m_token', res.token);
+      localStorage.setItem('m_user', JSON.stringify(res.user));
+      onLoginSuccess(res.user);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -36,121 +86,181 @@ export default function AuthPage({ onLoginSuccess }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'radial-gradient(circle at top, #4a281e 0%, #1f0f0a 100%)',
-      padding: '20px'
+      background: 'radial-gradient(ellipse at 50% 0%, #3B2820 0%, #1A0E09 70%)',
+      padding: '24px',
     }}>
-      <div style={{
-        width: '100%',
-        maxWidth: '400px',
-        background: '#ffffff',
-        padding: '36px 30px',
-        borderRadius: '12px',
-        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.3)'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <h2 style={{ color: '#2b1712', fontSize: '24px', margin: '0 0 6px' }}>M Chocolate & Cakes</h2>
-          <p style={{ color: '#7a5a50', fontSize: '13px', margin: 0 }}>
-            {isRegister ? 'Register your account to continue' : 'Please sign in to access the bakery'}
+      <div style={{ width: '100%', maxWidth: '420px' }}>
+
+        {/* ── Brand Mark ──────────────────────────────────────────────────── */}
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <div style={{ fontSize: '38px', lineHeight: 1, marginBottom: '8px' }}>🍫</div>
+          <h1 style={{
+            color: C.bg, fontSize: '24px', fontWeight: '700',
+            margin: '0 0 6px', letterSpacing: '0.5px',
+          }}>
+            M Chocolates &amp; Cakes
+          </h1>
+          <p style={{
+            color: C.gold, fontSize: '11px', letterSpacing: '2.5px',
+            textTransform: 'uppercase', margin: 0,
+          }}>
+            Artisanal · Bespoke · Handcrafted
           </p>
         </div>
 
-        {error && (
+        {/* ── Card ────────────────────────────────────────────────────────── */}
+        <div style={{
+          background: C.bg,
+          borderRadius: '16px',
+          padding: '32px 28px',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
+        }}>
+
+          {/* Mode Toggle Pill */}
           <div style={{
-            background: '#ffebee',
-            color: '#c62828',
-            padding: '10px 12px',
-            borderRadius: '6px',
-            fontSize: '13px',
-            marginBottom: '16px'
+            display: 'flex',
+            background: '#EDE5DC',
+            borderRadius: '10px',
+            padding: '4px',
+            marginBottom: '24px',
           }}>
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {isRegister && (
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Full Name</label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="off"
-                placeholder="e.g. Sarah Jenkins"
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
-              />
-            </div>
-          )}
-
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Email Address</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="off"
-              placeholder="user@example.com"
-              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              placeholder="••••••••"
-              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
-            />
-          </div>
-
-          {isRegister && (
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Account Portal</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', background: '#fff' }}
+            {[
+              { id: 'login',    label: 'Sign In' },
+              { id: 'register', label: 'Create Account' },
+            ].map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => switchMode(m.id)}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: '7px',
+                  border: 'none',
+                  background:  mode === m.id ? C.dark  : 'transparent',
+                  color:       mode === m.id ? C.bg    : C.muted,
+                  fontWeight:  mode === m.id ? '700'   : '500',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
               >
-                <option value="customer">Customer (Storefront Portal)</option>
-                <option value="owner">Owner (Management Dashboard)</option>
-              </select>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Error Banner */}
+          {error && (
+            <div style={{
+              background: C.errorBg, color: C.error,
+              border: '1px solid #F5C6CB',
+              padding: '10px 14px', borderRadius: '8px',
+              fontSize: '13px', marginBottom: '18px',
+            }}>
+              {error}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: '8px',
-              padding: '12px',
-              background: '#3e2723',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: 'bold',
-              cursor: loading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
-          </button>
-        </form>
+          {/* Form */}
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '13px' }}>
-          {isRegister ? 'Already have an account?' : "Don't have an account yet?"}{' '}
-          <button
-            type="button"
-            onClick={() => { setIsRegister(!isRegister); setError(''); }}
-            style={{ background: 'none', border: 'none', color: '#c0392b', cursor: 'pointer', fontWeight: 'bold' }}
-          >
-            {isRegister ? 'Sign In' : 'Register Here'}
-          </button>
+            {mode === 'register' && (
+              <div>
+                <label style={labelStyle}>Full Name</label>
+                <input required type="text" value={form.name} onChange={set('name')}
+                  placeholder="e.g. Ananya Sharma" autoComplete="name" style={inputStyle} />
+              </div>
+            )}
+
+            <div>
+              <label style={labelStyle}>Email Address</label>
+              <input required type="email" value={form.email} onChange={set('email')}
+                placeholder="you@example.com" autoComplete="email" style={inputStyle} />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Password</label>
+              <input required type="password" value={form.password} onChange={set('password')}
+                placeholder="••••••••" minLength={6}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                style={inputStyle} />
+            </div>
+
+            {mode === 'register' && (
+              <>
+                <div>
+                  <label style={labelStyle}>Phone <span style={{ fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+                  <input type="tel" value={form.phone} onChange={set('phone')}
+                    placeholder="+91 98765 43210" autoComplete="tel" style={inputStyle} />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Account Type</label>
+                  <select value={form.role} onChange={set('role')}
+                    style={{ ...inputStyle, cursor: 'pointer', background: '#fff' }}>
+                    <option value="customer">Customer — Storefront Access</option>
+                    <option value="owner">Owner — Kitchen Dashboard</option>
+                  </select>
+                </div>
+
+                {form.role === 'owner' && (
+                  <div>
+                    <label style={labelStyle}>Owner Passcode</label>
+                    <input required type="password" value={form.ownerPasscode}
+                      onChange={set('ownerPasscode')}
+                      placeholder="Bakery registration passcode"
+                      style={inputStyle} />
+                    <p style={{ fontSize: '11px', color: C.muted, marginTop: '4px' }}>
+                      Only one owner account can exist. Contact the bakery admin for the passcode.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* CTA */}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                marginTop: '6px',
+                padding: '13px',
+                background: loading ? '#B08060' : C.cta,
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '10px',
+                fontWeight: '700',
+                fontSize: '15px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                letterSpacing: '0.3px',
+              }}
+            >
+              {loading
+                ? 'Please wait…'
+                : mode === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+
+          {/* Switch Mode Link */}
+          <p style={{ textAlign: 'center', marginTop: '18px', fontSize: '12px', color: C.muted }}>
+            {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
+            <button
+              type="button"
+              onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
+              style={{
+                background: 'none', border: 'none', color: C.cta,
+                cursor: 'pointer', fontWeight: '700', fontSize: '12px', padding: 0,
+              }}
+            >
+              {mode === 'login' ? 'Register here' : 'Sign in instead'}
+            </button>
+          </p>
         </div>
+
+        {/* Footer tagline */}
+        <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '11px', color: 'rgba(250,247,242,0.4)', letterSpacing: '0.5px' }}>
+          Freshly baked with love. Delivered with care.
+        </p>
       </div>
     </div>
   );
