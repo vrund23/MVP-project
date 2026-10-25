@@ -471,25 +471,45 @@ function LiveOrdersTab({ orders, setOrders, loading }) {
   };
 
   const handleCancel = (order) => {
-    const confirmed = window.confirm(
-      `Cancel order #${order._id?.slice(-8).toUpperCase()} for ${order.customer?.name}? This cannot be undone.`
-    );
+    let confirmed = true;
+    try {
+      confirmed = window.confirm(
+        `Cancel order #${order._id?.slice(-8).toUpperCase()} for ${order.customer?.name || 'Customer'}? This cannot be undone.`
+      );
+    } catch {
+      confirmed = true; // Fallback if confirm() is blocked in the preview environment
+    }
     if (!confirmed) return;
 
-    const reason = window.prompt('Enter cancellation reason (owner):') || 'Cancelled by owner';
+    let reason = 'Cancelled by owner';
+    try {
+      const inputReason = window.prompt('Enter cancellation reason (owner):');
+      if (inputReason === null) return; // Abort if owner clicked "Cancel" on the prompt box
+      if (inputReason.trim()) {
+        reason = inputReason.trim();
+      }
+    } catch {
+      // Fallback when the environment throws "prompt() is not supported."
+      reason = 'Cancelled by owner';
+    }
+
     const id = order._id;
 
     setStatusUpdating(prev => ({ ...prev, [id]: true }));
-    setOrders(prev => prev.map(o => o._id === id ? { ...o, orderStatus: 'cancelled', cancellationReason: reason } : o));
+    setOrders(prev =>
+      prev.map(o =>
+        o._id === id ? { ...o, orderStatus: 'cancelled', cancellationReason: reason } : o
+      )
+    );
 
     api.cancelOrder(id, reason)
       .then(res => {
         if (res?.data) {
-          setOrders(prev => prev.map(o => o._id === id ? res.data : o));
+          setOrders(prev => prev.map(o => (o._id === id ? res.data : o)));
         }
       })
       .catch(() => {
-        setOrders(prev => prev.map(o => o._id === id ? order : o));
+        setOrders(prev => prev.map(o => (o._id === id ? order : o)));
       })
       .finally(() => {
         setStatusUpdating(prev => ({ ...prev, [id]: false }));
