@@ -60,7 +60,7 @@ app.use(
 );
 app.use("/api", apiLimiter);
 app.use("/api/auth", authLimiter);
-app.use("/api/orders", checkoutLimiter);
+//app.use("/api/orders", checkoutLimiter);
 app.use("/api/payments", checkoutLimiter);
 
 app.use("/api/products", productRoutes);
@@ -69,7 +69,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/upload", uploadRoutes);
 
-app.use("*", (req, res) => {
+app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: `Cannot ${req.method} ${req.originalUrl} - Route not found on this server.`,
