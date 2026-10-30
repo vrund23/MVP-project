@@ -594,6 +594,7 @@ function CatalogTab({ products, setProducts, loading }) {
   const [formLoading, setFormLoading] = useState(false);
   const [formSuccess, setFormSuccess] = useState('');
   const [formError, setFormError] = useState('');
+  const [uploadingIdx, setUploadingIdx] = useState(null);
 
   const updateForm = (field, value) => {
     setProductForm(prev => ({ ...prev, [field]: value }));
@@ -605,6 +606,36 @@ function CatalogTab({ products, setProducts, loading }) {
       variants[index] = { ...variants[index], [field]: value };
       return { ...prev, variants };
     });
+  };
+
+  const handleFileUpload = async (index, file) => {
+    if (!file) return;
+    setUploadingIdx(index);
+    setFormError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await api.uploadImage(formData);
+      if (res && res.success && res.data && res.data.imageUrl) {
+        updateVariant(index, 'imageUrl', res.data.imageUrl);
+      } else {
+        throw new Error(res?.message || 'Upload failed');
+      }
+    } catch (err) {
+      console.warn('Cloudinary upload endpoint error, fallback to local path or preview:', err.message);
+      // Fallback: Check if file name matches local image, or convert to data URL preview / public path
+      const localFallback = `/images/${file.name}`;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // Use data URL so it displays and saves nicely even without Cloudinary active
+        const dataUrl = e.target.result;
+        updateVariant(index, 'imageUrl', dataUrl || localFallback);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setUploadingIdx(null);
+    }
   };
 
   const addVariant = () => {
@@ -1031,16 +1062,68 @@ function CatalogTab({ products, setProducts, loading }) {
                         style={inputStyle}
                       />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, gridColumn: 'span 2' }}>
-                      <label style={labelStyle}>Image URL *</label>
-                      <input
-                        required
-                        type="url"
-                        value={variant.imageUrl}
-                        onChange={e => updateVariant(idx, 'imageUrl', e.target.value)}
-                        placeholder="https://..."
-                        style={inputStyle}
-                      />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: 'span 2' }}>
+                      <label style={labelStyle}>Variant Image *</label>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: 200 }}>
+                          <input
+                            required
+                            type="text"
+                            value={variant.imageUrl}
+                            onChange={e => updateVariant(idx, 'imageUrl', e.target.value)}
+                            placeholder="Image URL (or select file below)"
+                            style={inputStyle}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <label
+                            style={{
+                              background: '#FFF3E0',
+                              color: COLORS.amber,
+                              border: `1.5px solid ${COLORS.amber}`,
+                              borderRadius: 8,
+                              padding: '8px 14px',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              cursor: uploadingIdx === idx ? 'not-allowed' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            📁 {uploadingIdx === idx ? 'Uploading…' : 'Pick Local Image'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={uploadingIdx === idx}
+                              style={{ display: 'none' }}
+                              onChange={e => {
+                                if (e.target.files && e.target.files[0]) {
+                                  handleFileUpload(idx, e.target.files[0]);
+                                }
+                              }}
+                            />
+                          </label>
+                          {variant.imageUrl && (
+                            <div style={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: 8,
+                              overflow: 'hidden',
+                              border: `1.5px solid ${COLORS.border}`,
+                              background: '#F3ECE3',
+                              flexShrink: 0,
+                            }}>
+                              <img
+                                src={variant.imageUrl}
+                                alt="Preview"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

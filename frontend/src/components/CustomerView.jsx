@@ -63,15 +63,15 @@ function ProductCard({ product, onAddToCart }) {
       transition: 'box-shadow 0.2s',
     }}>
       {/* Image */}
-      <div style={{ position: 'relative', height: 200, background: '#F3EDE5', flexShrink: 0 }}>
+      <div style={{ position: 'relative', height: 220, width: '100%', overflow: 'hidden', backgroundColor: '#F3ECE3', flexShrink: 0 }}>
         {variant?.imageUrl ? (
           <img
             src={variant.imageUrl}
             alt={product.title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px 12px 0 0', display: 'block' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' }}
           />
         ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64, borderRadius: '12px 12px 0 0' }}>
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64 }}>
             {categoryEmoji[product.category] || '🛍️'}
           </div>
         )}
@@ -98,7 +98,6 @@ function ProductCard({ product, onAddToCart }) {
             position: 'absolute', inset: 0,
             background: 'rgba(43,30,22,0.55)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            borderRadius: '12px 12px 0 0',
           }}>
             <span style={{ color: '#fff', fontWeight: 700, fontSize: 16, letterSpacing: 1 }}>Out of Stock</span>
           </div>
