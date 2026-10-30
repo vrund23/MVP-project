@@ -230,6 +230,7 @@ export default function CustomerView({ user }) {
   const [street,        setStreet]          = useState('');
   const [city,          setCity]            = useState('');
   const [pincode,       setPincode]         = useState('');
+  const [paymentMethod, setPaymentMethod]   = useState('cod');
   const [checkoutError, setCheckoutError]   = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [placedOrder,   setPlacedOrder]     = useState(null);
@@ -316,7 +317,77 @@ export default function CustomerView({ user }) {
   const grandTotal  = itemsTotal + deliveryFee;
   const cartCount   = cart.reduce((s, i) => s + i.quantity, 0);
 
-  // ── Place order ─────────────────────────────────────────────────────────────
+  // ── Form reset helper ────────────────────────────────────────────────────────
+  const resetCheckoutForm = () => {
+    setDeliveryDate(''); setTimeSlot(''); setCakeMessage('');
+    setGreetingNote(''); setDietaryNote(''); setRecipientName('');
+    setRecipientPhone(''); setStreet(''); setCity(''); setPincode('');
+    setPaymentMethod('cod');
+  };
+
+  // ── Build order payload ─────────────────────────────────────────────────────
+  const buildOrderPayload = () => ({
+    items: cart.map(item => ({
+      productId: item.productId,
+      variantId: item.variantId,
+      quantity:  item.quantity,
+    })),
+    customizations: {
+      cakeMessage:          cakeMessage.trim(),
+      greetingCardMessage:  greetingNote.trim(),
+      dietaryNote:          dietaryNote.trim(),
+    },
+    fulfillment: {
+      method:       fulfillMethod,
+      deliveryDate: new Date(deliveryDate).toISOString(),
+      timeSlot,
+      shippingAddress: fulfillMethod === 'delivery' ? {
+        recipientName:  recipientName.trim(),
+        recipientPhone: recipientPhone.trim(),
+        street:         street.trim(),
+        city:           city.trim(),
+        pincode:        pincode.trim(),
+      } : undefined,
+    },
+    paymentMethod,
+  });
+
+  // ── Razorpay checkout modal ─────────────────────────────────────────────────
+  const openRazorpayCheckout = (rzpData, internalOrder) => {
+    return new Promise((resolve, reject) => {
+      const options = {
+        key:         rzpData.keyId,
+        amount:      rzpData.amount,
+        currency:    rzpData.currency,
+        order_id:    rzpData.razorpayOrderId,
+        name:        'M Chocolates & Cakes',
+        description: `Order ${fmtOrderId(internalOrder._id)}`,
+        image:       '',
+        prefill: {
+          name:    user?.name  || '',
+          email:   user?.email || '',
+        },
+        theme: { color: '#C86A28' },
+        handler: (response) => {
+          // Payment successful — response contains razorpay_payment_id, razorpay_order_id, razorpay_signature
+          resolve(response);
+        },
+        modal: {
+          ondismiss: () => {
+            reject(new Error('Payment cancelled. Your order is saved — you can retry payment from My Orders.'));
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (resp) => {
+        reject(new Error(resp.error?.description || 'Payment failed. Please try again.'));
+      });
+      rzp.open();
+    });
+  };
+
+  // ── Place order (COD or Online) ─────────────────────────────────────────────
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
     setCheckoutError('');
@@ -330,47 +401,55 @@ export default function CustomerView({ user }) {
       }
     }
 
-    const payload = {
-      items: cart.map(item => ({
-        productId: item.productId,
-        variantId: item.variantId,
-        quantity:  item.quantity,
-      })),
-      customizations: {
-        cakeMessage:          cakeMessage.trim(),
-        greetingCardMessage:  greetingNote.trim(),
-        dietaryNote:          dietaryNote.trim(),
-      },
-      fulfillment: {
-        method:       fulfillMethod,
-        deliveryDate: new Date(deliveryDate).toISOString(),
-        timeSlot,
-        shippingAddress: fulfillMethod === 'delivery' ? {
-          recipientName:  recipientName.trim(),
-          recipientPhone: recipientPhone.trim(),
-          street:         street.trim(),
-          city:           city.trim(),
-          pincode:        pincode.trim(),
-        } : undefined,
-      },
-      paymentMethod: 'cod',
-    };
-
+    const payload = buildOrderPayload();
     setCheckoutLoading(true);
+
     try {
-      const res = await api.createOrder(payload);
-      if (res.success) {
-        setPlacedOrder(res.data);
+      // Step 1: Create the order on backend (stock is atomically decremented here)
+      const orderRes = await api.createOrder(payload);
+      if (!orderRes.success) {
+        setCheckoutError(orderRes.message || 'Order failed. Please try again.');
+        return;
+      }
+
+      const createdOrder = orderRes.data;
+
+      // ── COD Flow: order is done ─────────────────────────────────────────
+      if (paymentMethod === 'cod') {
+        setPlacedOrder(createdOrder);
         setCart([]);
-        // reset form
-        setDeliveryDate(''); setTimeSlot(''); setCakeMessage('');
-        setGreetingNote(''); setDietaryNote(''); setRecipientName('');
-        setRecipientPhone(''); setStreet(''); setCity(''); setPincode('');
+        resetCheckoutForm();
+        return;
+      }
+
+      // ── Online Payment Flow (Razorpay) ──────────────────────────────────
+      // Step 2: Create Razorpay gateway order
+      const rzpRes = await api.createRazorpayOrder(createdOrder._id);
+      if (!rzpRes.success) {
+        setCheckoutError(rzpRes.message || 'Could not initiate payment gateway. Please try again.');
+        return;
+      }
+
+      // Step 3: Open Razorpay checkout modal
+      const rzpResponse = await openRazorpayCheckout(rzpRes.data, createdOrder);
+
+      // Step 4: Verify payment signature with backend
+      const verifyRes = await api.verifyPayment({
+        internalOrderId:    createdOrder._id,
+        razorpay_order_id:  rzpResponse.razorpay_order_id,
+        razorpay_payment_id: rzpResponse.razorpay_payment_id,
+        razorpay_signature: rzpResponse.razorpay_signature,
+      });
+
+      if (verifyRes.success) {
+        setPlacedOrder(verifyRes.data);
+        setCart([]);
+        resetCheckoutForm();
       } else {
-        setCheckoutError(res.message || 'Order failed. Please try again.');
+        setCheckoutError(verifyRes.message || 'Payment verification failed. Contact support.');
       }
     } catch (err) {
-      setCheckoutError(err?.response?.data?.message || err?.message || 'Order failed. Please try again.');
+      setCheckoutError(err?.message || 'Order failed. Please try again.');
     } finally {
       setCheckoutLoading(false);
     }
@@ -736,14 +815,21 @@ export default function CustomerView({ user }) {
                       </div>
                     </div>
 
-                    {/* Payment method */}
+                    {/* Payment method selector */}
                     <div>
                       <label style={labelStyle}>Payment</label>
-                      <div style={{
-                        display: 'inline-block', padding: '8px 16px', borderRadius: 999,
-                        border: `1.5px solid ${C.cta}`, background: '#FFF3E0',
-                        color: C.cta, fontSize: 13, fontWeight: 600,
-                      }}>💵 Cash on Delivery (COD)</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('cod')}
+                          style={pillToggleStyle(paymentMethod === 'cod')}
+                        >💵 Cash on Delivery (COD)</button>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('online_upi')}
+                          style={pillToggleStyle(paymentMethod === 'online_upi')}
+                        >📱 Pay Online (UPI / QR / Cards)</button>
+                      </div>
                     </div>
 
                     {/* Submit */}
@@ -759,7 +845,11 @@ export default function CustomerView({ user }) {
                         transition: 'background 0.15s',
                       }}
                     >
-                      {checkoutLoading ? 'Placing Order…' : `Place Order · ₹${grandTotal}`}
+                      {checkoutLoading
+                        ? 'Processing…'
+                        : paymentMethod === 'online_upi'
+                          ? `Pay Online · ₹${grandTotal}`
+                          : `Place Order · ₹${grandTotal}`}
                     </button>
                   </form>
                 </div>
